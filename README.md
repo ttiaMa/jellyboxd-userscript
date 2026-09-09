@@ -2,7 +2,7 @@
 
 A userscript that shows whether a movie on Letterboxd is available in your Jellyfin library via API.
 
-![Jellyboxd availability badge](assets/availability.png)
+![Jellyboxd availability badge](assets/availability-2-1.png)
 
 ## Features
 
@@ -19,7 +19,7 @@ A userscript that shows whether a movie on Letterboxd is available in your Jelly
 
 Updates are installed automatically from this repository.
 
-![Jellyfin configuration dialog](assets/configuration.png)
+![Jellyfin configuration dialog](assets/configuration-2-1.png)
 
 ## Configuration
 
