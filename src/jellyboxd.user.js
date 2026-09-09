@@ -115,7 +115,8 @@
 
         #${SETTINGS_ID} {
             align-items: center;
-            background: rgba(0, 0, 0, .72);
+            backdrop-filter: blur(3px);
+            background: rgba(8, 12, 15, .8);
             display: flex;
             inset: 0;
             justify-content: center;
@@ -125,43 +126,61 @@
         }
 
         #${SETTINGS_ID} .jellyboxd-dialog {
-            background: #202428;
-            border: 1px solid #44505a;
-            border-radius: 8px;
-            box-shadow: 0 16px 50px rgba(0, 0, 0, .5);
+            background: #202830;
+            border: 1px solid #34434e;
+            border-radius: 12px;
+            box-shadow: 0 18px 55px rgba(0, 0, 0, .55);
             box-sizing: border-box;
-            color: #fff;
+            color: #d8e2e8;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            max-width: 460px;
-            padding: 22px;
+            max-width: 440px;
+            padding: 24px;
             width: 100%;
         }
 
-        #${SETTINGS_ID} h2 { font-size: 20px; margin: 0 0 8px; }
-        #${SETTINGS_ID} p { color: #b7c0c7; font-size: 13px; line-height: 1.45; margin: 0 0 18px; }
-        #${SETTINGS_ID} label { display: block; font-size: 13px; font-weight: 700; margin: 14px 0 5px; }
+        #${SETTINGS_ID} h2 { color: #fff; font-size: 20px; letter-spacing: -.2px; margin: 0 0 8px; }
+        #${SETTINGS_ID} p { color: #9ab0bf; font-size: 13px; line-height: 1.5; margin: 0 0 18px; }
+        #${SETTINGS_ID} label {
+            color: #c6d3dc;
+            display: block;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: .25px;
+            margin: 15px 0 6px;
+        }
         #${SETTINGS_ID} input {
-            background: #111417;
-            border: 1px solid #56616a;
-            border-radius: 4px;
+            background: #14191e;
+            border: 1px solid #3d4b55;
+            border-radius: 6px;
             box-sizing: border-box;
-            color: #fff;
+            color: #d8e2e8;
             font: inherit;
-            padding: 9px 10px;
+            padding: 10px 11px;
+            transition: border-color .15s ease, box-shadow .15s ease;
             width: 100%;
         }
+        #${SETTINGS_ID} input::placeholder { color: #6f818e; }
+        #${SETTINGS_ID} input:focus {
+            border-color: #40bcf4;
+            box-shadow: 0 0 0 2px rgba(64, 188, 244, .14);
+            outline: 0;
+        }
         #${SETTINGS_ID} .jellyboxd-error { color: #ff8c84; margin: 10px 0 0; min-height: 18px; }
-        #${SETTINGS_ID} .jellyboxd-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+        #${SETTINGS_ID} .jellyboxd-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
         #${SETTINGS_ID} button {
-            background: #38434b;
+            background: #303c45;
             border: 0;
-            border-radius: 4px;
-            color: #fff;
+            border-radius: 999px;
+            color: #c8d5dd;
             cursor: pointer;
             font: inherit;
-            padding: 8px 12px;
+            padding: 8px 14px;
+            transition: background-color .15s ease, color .15s ease;
         }
-        #${SETTINGS_ID} button[type="submit"] { background: #00a4dc; font-weight: 700; }
+        #${SETTINGS_ID} button:hover { background: #3a4852; color: #fff; }
+        #${SETTINGS_ID} button:focus-visible { outline: 2px solid #40bcf4; outline-offset: 2px; }
+        #${SETTINGS_ID} button[type="submit"] { background: #00a84f; color: #fff; font-weight: 700; }
+        #${SETTINGS_ID} button[type="submit"]:hover { background: #00b85a; }
         #${SETTINGS_ID} button[data-action="clear"] { margin-right: auto; }
 
         @keyframes jellyboxd-spin { to { transform: rotate(360deg); } }
