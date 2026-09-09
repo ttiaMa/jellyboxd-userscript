@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Jellyboxd
 // @namespace    https://github.com/ttiaMa/jellyboxd-userscript
-// @version      0.2.0
-// @description  Mostra su Letterboxd se un film è presente nella tua libreria Jellyfin.
+// @version      2.0.0
+// @description  Shows whether a Letterboxd movie is available in your Jellyfin library.
 // @author       Mattia
 // @homepageURL  https://github.com/ttiaMa/jellyboxd-userscript
 // @supportURL   https://github.com/ttiaMa/jellyboxd-userscript/issues
@@ -32,6 +32,7 @@
     });
     const RETRY_DELAYS_MS = [0, 1500, 4000];
     const REQUEST_TIMEOUT_MS = 12000;
+    const MIN_LOADING_DURATION_MS = 1000;
 
     let activePageKey = '';
     let activeRequest = null;
@@ -39,6 +40,7 @@
     let initializeTimer = null;
     let initializeForced = false;
     let lastState = 'idle';
+    let currentView = { state: 'idle', message: '', action: null };
 
     GM_addStyle(`
         #${WIDGET_ID} {
@@ -163,7 +165,7 @@
     function normalizeServerUrl(value) {
         const url = new URL(value.trim());
         if (!['http:', 'https:'].includes(url.protocol)) {
-            throw new Error('Usa un indirizzo http:// o https://.');
+            throw new Error('Use an http:// or https:// address.');
         }
 
         url.hash = '';
@@ -242,22 +244,27 @@
         return widget;
     }
 
-    function setWidgetState(state, message, action = null) {
-        lastState = state;
+    function renderWidgetState(view) {
         const widget = ensureWidget();
         if (!widget) return;
 
-        widget.dataset.state = state;
-        widget.querySelector('.jellyboxd-message').textContent = message;
+        widget.dataset.state = view.state;
+        widget.querySelector('.jellyboxd-message').textContent = view.message;
         widget.querySelector('button')?.remove();
 
-        if (action) {
+        if (view.action) {
             const button = document.createElement('button');
             button.type = 'button';
-            button.textContent = action.label;
-            button.addEventListener('click', action.onClick);
+            button.textContent = view.action.label;
+            button.addEventListener('click', view.action.onClick);
             widget.append(button);
         }
+    }
+
+    function setWidgetState(state, message, action = null) {
+        lastState = state;
+        currentView = { state, message, action };
+        renderWidgetState(currentView);
     }
 
     function buildRequestUrl(serverUrl, metadata) {
@@ -289,7 +296,7 @@
                 onload(response) {
                     clearActiveRequest();
                     if (response.status < 200 || response.status >= 300) {
-                        reject(new JellyfinRequestError(`Jellyfin ha risposto con HTTP ${response.status}.`, {
+                        reject(new JellyfinRequestError(`Jellyfin returned HTTP ${response.status}.`, {
                             status: response.status,
                             retryable: response.status === 0 || response.status === 408
                                 || response.status === 429 || response.status >= 500
@@ -300,22 +307,22 @@
                     try {
                         resolve(JSON.parse(response.responseText));
                     } catch (error) {
-                        reject(new JellyfinRequestError('La risposta di Jellyfin non è JSON valido.', {
+                        reject(new JellyfinRequestError('Jellyfin returned invalid JSON.', {
                             retryable: true
                         }));
                     }
                 },
                 ontimeout() {
                     clearActiveRequest();
-                    reject(new JellyfinRequestError('Jellyfin non ha risposto in tempo.', { retryable: true }));
+                    reject(new JellyfinRequestError('Jellyfin did not respond in time.', { retryable: true }));
                 },
                 onerror() {
                     clearActiveRequest();
-                    reject(new JellyfinRequestError('Connessione a Jellyfin non riuscita.', { retryable: true }));
+                    reject(new JellyfinRequestError('Could not connect to Jellyfin.', { retryable: true }));
                 },
                 onabort() {
                     clearActiveRequest();
-                    reject(new JellyfinRequestError('Richiesta annullata.'));
+                    reject(new JellyfinRequestError('Request cancelled.'));
                 }
             });
             activeRequest = requestHandle;
@@ -326,14 +333,20 @@
         return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
     }
 
-    async function checkAvailability(metadata, configuration, generation) {
+    async function finishMinimumLoading(startedAt, generation) {
+        const remainingTime = MIN_LOADING_DURATION_MS - (Date.now() - startedAt);
+        if (remainingTime > 0) await wait(remainingTime);
+        return generation === requestGeneration;
+    }
+
+    async function checkAvailability(metadata, configuration, generation, loadingStartedAt) {
         const requestUrl = buildRequestUrl(configuration.serverUrl, metadata);
 
         for (let attempt = 0; attempt < RETRY_DELAYS_MS.length; attempt += 1) {
             if (generation !== requestGeneration) return;
 
             if (RETRY_DELAYS_MS[attempt] > 0) {
-                setWidgetState('loading', `Nuovo tentativo ${attempt + 1}/${RETRY_DELAYS_MS.length}…`);
+                setWidgetState('loading', `Retrying ${attempt + 1}/${RETRY_DELAYS_MS.length}…`);
                 await wait(RETRY_DELAYS_MS[attempt]);
                 if (generation !== requestGeneration) return;
             }
@@ -343,21 +356,19 @@
                 if (generation !== requestGeneration) return;
 
                 if (!Array.isArray(data?.Items)) {
-                    throw new JellyfinRequestError('La risposta di Jellyfin non contiene un elenco di film.', {
+                    throw new JellyfinRequestError('The Jellyfin response does not contain a movie list.', {
                         retryable: true
                     });
                 }
 
                 const items = data.Items;
                 const match = findMatchingMovie(items, metadata);
+                if (!await finishMinimumLoading(loadingStartedAt, generation)) return;
 
                 if (match) {
-                    setWidgetState('available', '✓ Presente su Jellyfin');
+                    setWidgetState('available', '✓ Available on Jellyfin');
                 } else {
-                    setWidgetState('unavailable', 'Non presente su Jellyfin', {
-                        label: 'Ricontrolla',
-                        onClick: () => initialize(true)
-                    });
+                    setWidgetState('unavailable', 'Not available on Jellyfin');
                 }
                 return;
             } catch (error) {
@@ -366,12 +377,13 @@
                 if (error.retryable && hasAnotherAttempt) continue;
 
                 console.error(`${SCRIPT_NAME}:`, error);
+                if (!await finishMinimumLoading(loadingStartedAt, generation)) return;
                 const authenticationFailed = error.status === 401 || error.status === 403;
                 setWidgetState(
                     'error',
-                    authenticationFailed ? 'Credenziali Jellyfin non valide' : 'Verifica Jellyfin non riuscita',
+                    authenticationFailed ? 'Invalid Jellyfin credentials' : 'Jellyfin check failed',
                     {
-                        label: authenticationFailed ? 'Configura' : 'Riprova',
+                        label: authenticationFailed ? 'Configure' : 'Retry',
                         onClick: authenticationFailed ? openSettings : () => initialize(true)
                     }
                 );
@@ -392,31 +404,35 @@
 
         const pageKey = `${location.pathname}|${metadata.title}|${metadata.year || ''}`;
         const widgetExists = Boolean(document.getElementById(WIDGET_ID));
-        if (!force && pageKey === activePageKey && widgetExists) return;
+        if (!force && pageKey === activePageKey) {
+            if (!widgetExists && currentView.state !== 'idle') renderWidgetState(currentView);
+            return;
+        }
 
         cancelActiveRequest();
         activePageKey = pageKey;
 
         const configuration = readConfiguration();
         if (!configuration.serverUrl || !configuration.apiKey) {
-            setWidgetState('configuration', 'Jellyfin non configurato', {
-                label: 'Configura',
+            setWidgetState('configuration', 'Jellyfin is not configured', {
+                label: 'Configure',
                 onClick: openSettings
             });
             return;
         }
 
         if (/["\r\n]/.test(configuration.apiKey)) {
-            setWidgetState('error', 'API key Jellyfin non valida', {
-                label: 'Configura',
+            setWidgetState('error', 'Invalid Jellyfin API key', {
+                label: 'Configure',
                 onClick: openSettings
             });
             return;
         }
 
-        setWidgetState('loading', 'Verifica su Jellyfin…');
+        const loadingStartedAt = Date.now();
+        setWidgetState('loading', 'Checking Jellyfin…');
         const generation = requestGeneration;
-        void checkAvailability(metadata, configuration, generation);
+        void checkAvailability(metadata, configuration, generation, loadingStartedAt);
     }
 
     function scheduleInitialize(force = false) {
@@ -437,17 +453,17 @@
         backdrop.id = SETTINGS_ID;
         backdrop.innerHTML = `
             <form class="jellyboxd-dialog" role="dialog" aria-modal="true" aria-labelledby="jellyboxd-settings-title">
-                <h2 id="jellyboxd-settings-title">Configura Jellyfin</h2>
-                <p>URL e API key restano nello storage locale del gestore userscript e non vengono inseriti nel codice.</p>
-                <label for="jellyboxd-server-url">Indirizzo del server</label>
+                <h2 id="jellyboxd-settings-title">Configure Jellyfin</h2>
+                <p>Your server URL and API key stay in the userscript manager's local storage and are never added to the source code.</p>
+                <label for="jellyboxd-server-url">Server address</label>
                 <input id="jellyboxd-server-url" name="serverUrl" type="url" placeholder="https://jellyfin.example.com" required>
                 <label for="jellyboxd-api-key">API key</label>
                 <input id="jellyboxd-api-key" name="apiKey" type="password" autocomplete="off" required>
                 <p class="jellyboxd-error" role="alert"></p>
                 <div class="jellyboxd-actions">
-                    <button type="button" data-action="clear">Cancella dati</button>
-                    <button type="button" data-action="cancel">Annulla</button>
-                    <button type="submit">Salva e verifica</button>
+                    <button type="button" data-action="clear">Clear data</button>
+                    <button type="button" data-action="cancel">Cancel</button>
+                    <button type="submit">Save and check</button>
                 </div>
             </form>
         `;
@@ -468,8 +484,8 @@
             try {
                 const serverUrl = normalizeServerUrl(serverInput.value);
                 const apiKey = apiKeyInput.value.trim();
-                if (!apiKey) throw new Error('Inserisci una API key.');
-                if (/["\r\n]/.test(apiKey)) throw new Error('La API key contiene caratteri non validi.');
+                if (!apiKey) throw new Error('Enter an API key.');
+                if (/["\r\n]/.test(apiKey)) throw new Error('The API key contains invalid characters.');
 
                 GM_setValue(STORAGE_KEYS.serverUrl, serverUrl);
                 GM_setValue(STORAGE_KEYS.apiKey, apiKey);
@@ -487,9 +503,9 @@
             GM_deleteValue(STORAGE_KEYS.apiKey);
             serverInput.value = '';
             apiKeyInput.value = '';
-            errorElement.textContent = 'Configurazione cancellata.';
-            setWidgetState('configuration', 'Jellyfin non configurato', {
-                label: 'Configura',
+            errorElement.textContent = 'Configuration cleared.';
+            setWidgetState('configuration', 'Jellyfin is not configured', {
+                label: 'Configure',
                 onClick: openSettings
             });
         });
@@ -504,14 +520,14 @@
         serverInput.focus();
     }
 
-    GM_registerMenuCommand('Configura Jellyfin…', openSettings);
-    GM_registerMenuCommand('Verifica di nuovo', () => initialize(true));
+    GM_registerMenuCommand('Configure Jellyfin…', openSettings);
+    GM_registerMenuCommand('Check again', () => initialize(true));
 
     const observer = new MutationObserver(() => scheduleInitialize(false));
     observer.observe(document.documentElement, { childList: true, subtree: true });
 
-    window.addEventListener('pageshow', () => scheduleInitialize(true));
-    window.addEventListener('popstate', () => scheduleInitialize(true));
+    window.addEventListener('pageshow', () => scheduleInitialize(false));
+    window.addEventListener('popstate', () => scheduleInitialize(false));
     window.addEventListener('online', () => {
         if (lastState === 'error' || lastState === 'loading') scheduleInitialize(true);
     });

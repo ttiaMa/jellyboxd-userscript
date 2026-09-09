@@ -1,68 +1,71 @@
 # Jellyboxd
 
-Userscript per verificare direttamente dalla pagina di un film su Letterboxd se il titolo è presente nella propria libreria Jellyfin.
+A userscript that shows whether a movie on Letterboxd is available in your Jellyfin library.
 
-[Installa Jellyboxd](https://raw.githubusercontent.com/ttiaMa/jellyboxd-userscript/main/src/jellyboxd.user.js)
+[Install Jellyboxd](https://raw.githubusercontent.com/ttiaMa/jellyboxd-userscript/main/src/jellyboxd.user.js)
 
-## Stato attuale
+## Current features
 
-- compatibile con l'autenticazione moderna di Jellyfin 12 tramite `Authorization: MediaBrowser Token="…"`;
-- mostra subito un indicatore giallo durante la verifica;
-- distingue una risposta valida “non presente” da un errore di rete o autenticazione;
-- riprova automaticamente le richieste temporaneamente fallite;
-- permette un nuovo tentativo manuale e riparte quando la connessione torna disponibile;
-- conserva URL e API key nello storage locale di Violentmonkey/Tampermonkey, separati dal sorgente aggiornabile.
+- Jellyfin 12-compatible authentication through `Authorization: MediaBrowser Token="…"`;
+- a stable loading indicator that remains visible for at least one second;
+- separate available, unavailable, configuration, and error states;
+- automatic retries for temporary request failures;
+- manual retry after errors and automatic recovery when the connection returns;
+- server URL and API key stored outside the updateable source code;
+- English-only interface and documentation.
 
-## Installazione
+## Installation
 
-1. Installa un gestore userscript, per esempio Violentmonkey o Tampermonkey.
-2. Apri il link **Installa Jellyboxd** qui sopra e conferma l'installazione nel gestore.
-3. Apri una pagina film di Letterboxd.
-4. Premi **Configura** nel widget oppure usa il menu del gestore userscript → **Configura Jellyfin…**.
-5. Inserisci l'URL completo del server e una API key creata dal pannello di amministrazione Jellyfin.
+1. Install a userscript manager such as Violentmonkey or Tampermonkey.
+2. Open the **Install Jellyboxd** link above and confirm the installation.
+3. Open a Letterboxd movie page.
+4. Select **Configure** in the widget, or open the userscript manager menu and select **Configure Jellyfin…**.
+5. Enter the full Jellyfin server URL and an API key created in the Jellyfin administration dashboard.
 
-Esempio di URL: `https://jellyfin.example.com` oppure `http://192.168.1.100:8096`.
+Example server URLs: `https://jellyfin.example.com` or `http://192.168.1.100:8096`.
 
-## Configurazione e sicurezza
+## Configuration and security
 
-La API key non è scritta nel file `.user.js` e quindi non finisce nei commit o negli aggiornamenti distribuiti da GitHub. Viene salvata dal gestore userscript nel suo storage locale. Questo separa il segreto dal codice aggiornabile, ma non equivale a cifrarlo: l'estensione e lo userscript installato possono leggerlo.
+The API key is never written to the `.user.js` file, so it cannot be committed or overwritten by updates from GitHub. It is stored locally by the userscript manager. This separates the secret from the updateable source code, but does not encrypt it: the browser extension and the installed userscript can read it.
 
-Il metadato `@connect *` è necessario perché l'indirizzo Jellyfin viene scelto dall'utente e può essere un dominio o un IP locale. Il gestore userscript può chiedere il consenso al primo collegamento. Lo script invia al solo server configurato il titolo e l'anno del film visualizzato.
+The `@connect *` metadata entry is necessary because each user can configure a different Jellyfin domain or local IP address. The userscript manager may ask for permission before the first connection. The script only sends the displayed movie title and year to the configured server.
 
-Una API key resta comunque un segreto: non va condivisa, inserita in screenshot o committata. In caso di dubbio, revocala da Jellyfin e creane una nuova.
+An API key must still be treated as a secret. Never share it, include it in screenshots, or commit it. If it may have been exposed, revoke it in Jellyfin and create a new one.
 
-## Comportamento delle verifiche
+## Availability checks
 
-Il widget usa questi stati:
+The widget has four states:
 
-- **giallo**: configurazione richiesta, richiesta in corso o nuovo tentativo programmato;
-- **blu**: film presente;
-- **grigio**: Jellyfin ha risposto correttamente ma non è stata trovata una corrispondenza per titolo e anno;
-- **rosso**: errore di rete, risposta non valida oppure credenziali rifiutate.
+- **yellow**: configuration is required, a request is running, or a retry is scheduled;
+- **blue**: the movie is available;
+- **grey**: Jellyfin responded successfully, but no matching title and year were found;
+- **red**: a network, response, or authentication error occurred.
 
-Gli errori temporanei (timeout, HTTP 408, 429 e 5xx) vengono ritentati fino a tre volte. HTTP 401 e 403 portano direttamente alla riconfigurazione delle credenziali.
+The loading state remains visible for at least one second, preventing fast responses and Letterboxd DOM updates from causing visible flicker. If Letterboxd replaces the injected widget, Jellyboxd restores the last known state without sending the same request again.
 
-## Sviluppo
+Temporary errors such as timeouts and HTTP 408, 429, or 5xx responses are retried up to three times. HTTP 401 and 403 responses open the path to credential configuration. An unavailable result is final for that check and does not display a recheck button.
 
-Non ci sono dipendenze runtime o di build. È sufficiente Node.js per il controllo sintattico:
+## Development
+
+There are no runtime or build dependencies. Node.js is only required for the syntax check:
 
 ```powershell
 npm test
 ```
 
-File installabile: `src/jellyboxd.user.js`.
+Installable file: `src/jellyboxd.user.js`.
 
-## Aggiornamenti da GitHub
+## Updates from GitHub
 
-I metadati `@downloadURL` e `@updateURL` puntano al file raw del branch `main`. URL e API key continuano a vivere nello storage del gestore e non vengono sovrascritti dagli aggiornamenti.
+The `@downloadURL` and `@updateURL` metadata entries point to the raw userscript on the `main` branch. The server URL and API key remain in the userscript manager storage and are not overwritten during updates.
 
-## Idee per i prossimi step
+## Possible next steps
 
-- visualizzare risoluzione, codec, HDR e altre informazioni delle sorgenti media;
-- migliorare il matching con identificativi TMDB/IMDb quando disponibili;
-- definire la grafica definitiva del widget;
-- aggiungere test automatici del matching e delle transizioni di stato.
+- display resolution, codecs, HDR, and other media source information;
+- improve matching with TMDB or IMDb identifiers when available;
+- refine the final widget design;
+- add automated tests for matching and state transitions.
 
-## Licenza
+## License
 
-Non è stata ancora assegnata una licenza open source al progetto.
+No open-source license has been assigned to the project yet.
