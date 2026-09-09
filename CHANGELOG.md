@@ -25,7 +25,6 @@ All notable changes to this project are documented in this file.
 - added the official Jellyfin icon to userscript manager listings;
 - converted the userscript interface, messages, metadata, and repository documentation to English;
 - added GitHub installation and automatic update metadata;
-- prepared the repository structure and development checks.
 
 ## 1.0.0
 
