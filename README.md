@@ -1,13 +1,13 @@
 # Jellyboxd
 
-A userscript that shows whether a movie on Letterboxd is available in your Jellyfin library.
+A userscript that shows whether a movie on Letterboxd is available in your Jellyfin library via API.
 
 ![Jellyboxd availability badge](assets/availability.png)
 
 ## Features
 
 - exact TMDB ID matching, with title and year matching as a fallback;
-- Jellyfin 12-compatible authentication;
+- Jellyfin 12 compatible authentication;
 - automatic retries for temporary connection failures.
 
 ## Installation
