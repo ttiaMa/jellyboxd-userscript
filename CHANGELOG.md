@@ -16,6 +16,7 @@ All notable changes to this project are documented in this file.
 - removed the recheck action from unavailable results;
 - added exact TMDB ID matching using the provider link exposed by Letterboxd;
 - added title and year matching as a fallback when TMDB data is unavailable or does not match;
+- added the official Jellyfin icon to userscript manager listings;
 - converted the userscript interface, messages, metadata, and repository documentation to English;
 - added GitHub installation and automatic update metadata;
 - prepared the repository structure and development checks.

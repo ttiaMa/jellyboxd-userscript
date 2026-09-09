@@ -4,6 +4,7 @@
 // @version      2.0.0
 // @description  Shows whether a Letterboxd movie is available in your Jellyfin library.
 // @author       Mattia
+// @icon         https://raw.githubusercontent.com/jellyfin/jellyfin-ux/master/branding/web/icon-transparent.png
 // @homepageURL  https://github.com/ttiaMa/jellyboxd-userscript
 // @supportURL   https://github.com/ttiaMa/jellyboxd-userscript/issues
 // @downloadURL  https://raw.githubusercontent.com/ttiaMa/jellyboxd-userscript/main/src/jellyboxd.user.js
