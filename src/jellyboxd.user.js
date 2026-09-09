@@ -58,9 +58,10 @@
             font-size: 12px;
             font-weight: 500;
             gap: 7px;
+            height: 30px;
             letter-spacing: .1px;
             margin-bottom: 15px;
-            padding: 6px 11px;
+            padding: 0 11px;
             width: fit-content;
         }
 
