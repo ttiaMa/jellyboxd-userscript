@@ -1,0 +1,18 @@
+{
+    "name": "jellyboxd-userscript",
+    "version": "0.2.0",
+    "private": true,
+    "description": "Userscript che verifica la disponibilità dei film Letterboxd su Jellyfin.",
+    "homepage": "https://github.com/ttiaMa/jellyboxd-userscript",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/ttiaMa/jellyboxd-userscript.git"
+    },
+    "scripts": {
+        "check": "node --check src/jellyboxd.user.js",
+        "test": "npm run check"
+    },
+    "engines": {
+        "node": ">=18"
+    }
+}
