@@ -14,6 +14,8 @@ All notable changes to this project are documented in this file.
 - prevented repeated requests and visual flicker when Letterboxd replaces or mutates the injected widget;
 - restored the last stable state after DOM replacement instead of restarting the check;
 - removed the recheck action from unavailable results;
+- added exact TMDB ID matching using the provider link exposed by Letterboxd;
+- added title and year matching as a fallback when TMDB data is unavailable or does not match;
 - converted the userscript interface, messages, metadata, and repository documentation to English;
 - added GitHub installation and automatic update metadata;
 - prepared the repository structure and development checks.

@@ -179,14 +179,17 @@
             || document.querySelector('h1.headline-1');
         const yearElement = document.querySelector('.releaseyear a')
             || document.querySelector('small.number[itemprop="copyrightYear"]');
+        const tmdbLink = document.querySelector('a[href*="themoviedb.org/movie/"]');
 
         const title = titleElement?.textContent?.trim();
         if (!title) return null;
 
         const parsedYear = Number.parseInt(yearElement?.textContent?.trim() || '', 10);
+        const tmdbId = tmdbLink?.href?.match(/themoviedb\.org\/movie\/(\d+)/i)?.[1] || null;
         return {
             title,
-            year: Number.isFinite(parsedYear) ? parsedYear : null
+            year: Number.isFinite(parsedYear) ? parsedYear : null,
+            tmdbId
         };
     }
 
@@ -198,7 +201,7 @@
             .toLocaleLowerCase();
     }
 
-    function findMatchingMovie(items, metadata) {
+    function findMatchingMovieByTitle(items, metadata) {
         const expectedTitle = normalizeTitle(metadata.title);
 
         return items.find((item) => {
@@ -208,6 +211,16 @@
             if (!metadata.year || !Number.isFinite(productionYear)) return true;
             return productionYear === metadata.year;
         }) || null;
+    }
+
+    function getProviderId(item, providerName) {
+        const providerEntry = Object.entries(item?.ProviderIds || {})
+            .find(([name]) => name.toLocaleLowerCase() === providerName.toLocaleLowerCase());
+        return providerEntry ? String(providerEntry[1]) : null;
+    }
+
+    function findMatchingMovieByTmdbId(items, tmdbId) {
+        return items.find((item) => getProviderId(item, 'tmdb') === String(tmdbId)) || null;
     }
 
     function getWidgetPlacement() {
@@ -267,13 +280,31 @@
         renderWidgetState(currentView);
     }
 
-    function buildRequestUrl(serverUrl, metadata) {
+    function buildTitleRequestUrl(serverUrl, metadata) {
         const query = new URLSearchParams({
             searchTerm: metadata.title,
             includeItemTypes: 'Movie',
             recursive: 'true',
             limit: '10',
-            fields: 'ProductionYear'
+            fields: 'ProductionYear,ProviderIds',
+            enableImages: 'false',
+            enableUserData: 'false',
+            enableTotalRecordCount: 'false'
+        });
+        return `${serverUrl}/Items?${query}`;
+    }
+
+    function buildTmdbRequestUrl(serverUrl, metadata) {
+        if (!metadata.tmdbId || !metadata.year) return null;
+
+        const query = new URLSearchParams({
+            includeItemTypes: 'Movie',
+            recursive: 'true',
+            years: [metadata.year - 1, metadata.year, metadata.year + 1].join(','),
+            fields: 'ProductionYear,ProviderIds',
+            enableImages: 'false',
+            enableUserData: 'false',
+            enableTotalRecordCount: 'false'
         });
         return `${serverUrl}/Items?${query}`;
     }
@@ -339,9 +370,34 @@
         return generation === requestGeneration;
     }
 
-    async function checkAvailability(metadata, configuration, generation, loadingStartedAt) {
-        const requestUrl = buildRequestUrl(configuration.serverUrl, metadata);
+    function getItemsFromResponse(data) {
+        if (!Array.isArray(data?.Items)) {
+            throw new JellyfinRequestError('The Jellyfin response does not contain a movie list.', {
+                retryable: true
+            });
+        }
 
+        return data.Items;
+    }
+
+    async function findMovie(metadata, configuration, generation) {
+        const tmdbRequestUrl = buildTmdbRequestUrl(configuration.serverUrl, metadata);
+        if (tmdbRequestUrl) {
+            const tmdbData = await requestJson(tmdbRequestUrl, configuration.apiKey);
+            const tmdbMatch = findMatchingMovieByTmdbId(getItemsFromResponse(tmdbData), metadata.tmdbId);
+            if (tmdbMatch) return tmdbMatch;
+            if (generation !== requestGeneration) return null;
+        }
+
+        if (generation !== requestGeneration) return null;
+        const titleData = await requestJson(
+            buildTitleRequestUrl(configuration.serverUrl, metadata),
+            configuration.apiKey
+        );
+        return findMatchingMovieByTitle(getItemsFromResponse(titleData), metadata);
+    }
+
+    async function checkAvailability(metadata, configuration, generation, loadingStartedAt) {
         for (let attempt = 0; attempt < RETRY_DELAYS_MS.length; attempt += 1) {
             if (generation !== requestGeneration) return;
 
@@ -352,17 +408,8 @@
             }
 
             try {
-                const data = await requestJson(requestUrl, configuration.apiKey);
+                const match = await findMovie(metadata, configuration, generation);
                 if (generation !== requestGeneration) return;
-
-                if (!Array.isArray(data?.Items)) {
-                    throw new JellyfinRequestError('The Jellyfin response does not contain a movie list.', {
-                        retryable: true
-                    });
-                }
-
-                const items = data.Items;
-                const match = findMatchingMovie(items, metadata);
                 if (!await finishMinimumLoading(loadingStartedAt, generation)) return;
 
                 if (match) {
@@ -402,7 +449,7 @@
         const metadata = getMetadata();
         if (!metadata) return;
 
-        const pageKey = `${location.pathname}|${metadata.title}|${metadata.year || ''}`;
+        const pageKey = `${location.pathname}|${metadata.title}|${metadata.year || ''}|${metadata.tmdbId || ''}`;
         const widgetExists = Boolean(document.getElementById(WIDGET_ID));
         if (!force && pageKey === activePageKey) {
             if (!widgetExists && currentView.state !== 'idle') renderWidgetState(currentView);
