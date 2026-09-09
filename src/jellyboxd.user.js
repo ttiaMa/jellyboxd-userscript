@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Jellyboxd
 // @namespace    https://github.com/ttiaMa/jellyboxd-userscript
-// @version      2.0.0
+// @version      2.1.0
 // @description  Shows whether a Letterboxd movie is available in your Jellyfin library.
 // @author       Mattia
 // @icon         https://raw.githubusercontent.com/jellyfin/jellyfin-ux/master/branding/web/icon-transparent.png
@@ -47,26 +47,45 @@
         #${WIDGET_ID} {
             --jellyboxd-accent: #f0b429;
             align-items: center;
-            background: color-mix(in srgb, var(--jellyboxd-accent) 18%, #181818);
-            border: 1px solid color-mix(in srgb, var(--jellyboxd-accent) 65%, transparent);
-            border-radius: 5px;
+            background: #202830;
+            border: 0;
+            border-radius: 999px;
             box-sizing: border-box;
-            color: #fff;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, .18);
+            color: #b7c9d8;
             display: flex;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             font-size: 12px;
-            font-weight: 700;
-            gap: 8px;
-            letter-spacing: .2px;
+            font-weight: 500;
+            gap: 7px;
+            letter-spacing: .1px;
             margin-bottom: 15px;
-            padding: 7px 10px;
+            padding: 6px 11px;
             width: fit-content;
         }
 
-        #${WIDGET_ID}[data-state="available"] { --jellyboxd-accent: #00a4dc; }
-        #${WIDGET_ID}[data-state="unavailable"] { --jellyboxd-accent: #667788; }
+        #${WIDGET_ID}[data-state="available"] { --jellyboxd-accent: #22d3bd; }
+        #${WIDGET_ID}[data-state="unavailable"] { --jellyboxd-accent: #8d9aa5; }
         #${WIDGET_ID}[data-state="error"] { --jellyboxd-accent: #e45b4f; }
         #${WIDGET_ID}[data-state="configuration"] { --jellyboxd-accent: #f0b429; }
+
+        #${WIDGET_ID} .jellyboxd-message {
+            align-items: center;
+            display: inline-flex;
+            gap: 7px;
+        }
+
+        #${WIDGET_ID} .jellyboxd-message::before {
+            background: var(--jellyboxd-accent);
+            border-radius: 50%;
+            box-shadow: 0 0 0 2px color-mix(in srgb, var(--jellyboxd-accent) 14%, transparent);
+            content: "";
+            flex: 0 0 auto;
+            height: 8px;
+            width: 8px;
+        }
+
+        #${WIDGET_ID}[data-state="loading"] .jellyboxd-message::before { display: none; }
 
         #${WIDGET_ID} .jellyboxd-spinner {
             animation: jellyboxd-spin .8s linear infinite;
@@ -414,7 +433,7 @@
                 if (!await finishMinimumLoading(loadingStartedAt, generation)) return;
 
                 if (match) {
-                    setWidgetState('available', '✓ Available on Jellyfin');
+                    setWidgetState('available', 'Available on Jellyfin');
                 } else {
                     setWidgetState('unavailable', 'Not available on Jellyfin');
                 }

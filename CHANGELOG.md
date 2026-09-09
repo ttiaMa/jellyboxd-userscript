@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## 2.1.0 - 2026-09-09
+
+- redesigned the availability widget as a compact, Letterboxd-native charcoal chip;
+- replaced status symbols and tinted borders with a small state-colored indicator;
+- softened the typography, spacing, and shadows without changing availability checks or request handling.
+
 ## 2.0.0 - 2026-09-09
 
 - replaced `X-Emby-Token` with the modern `Authorization: MediaBrowser Token="…"` header;
