@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Jellyboxd
 // @namespace    https://github.com/ttiaMa/jellyboxd-userscript
-// @version      2.1.0
+// @version      2.2.0
 // @description  Shows whether a Letterboxd movie is available in your Jellyfin library.
 // @author       Mattia
 // @icon         https://raw.githubusercontent.com/jellyfin/jellyfin-ux/master/branding/web/icon-transparent.png
@@ -26,6 +26,7 @@
 
     const SCRIPT_NAME = 'Jellyboxd';
     const WIDGET_ID = 'jellyboxd-status';
+    const DETAILS_ID = 'jellyboxd-details';
     const SETTINGS_ID = 'jellyboxd-settings';
     const STORAGE_KEYS = Object.freeze({
         serverUrl: 'jellyfinServerUrl',
@@ -34,6 +35,7 @@
     const RETRY_DELAYS_MS = [0, 1500, 4000];
     const REQUEST_TIMEOUT_MS = 12000;
     const MIN_LOADING_DURATION_MS = 1000;
+    const boundWidgets = new WeakSet();
 
     let activePageKey = '';
     let activeRequest = null;
@@ -42,6 +44,10 @@
     let initializeForced = false;
     let lastState = 'idle';
     let currentView = { state: 'idle', message: '', action: null };
+    let matchingMovies = [];
+    let detailsData = null;
+    let detailsOpen = false;
+    let detailsLoading = false;
 
     GM_addStyle(`
         #${WIDGET_ID} {
@@ -70,6 +76,19 @@
         #${WIDGET_ID}[data-state="error"] { --jellyboxd-accent: #e45b4f; }
         #${WIDGET_ID}[data-state="configuration"] { --jellyboxd-accent: #f0b429; }
 
+        #${WIDGET_ID}[data-interactive="true"] {
+            cursor: pointer;
+            transition: background-color .15s ease, box-shadow .15s ease;
+            user-select: none;
+        }
+
+        #${WIDGET_ID}[data-interactive="true"]:hover { background: #28343d; }
+        #${WIDGET_ID}[data-interactive="true"]:focus-visible {
+            box-shadow: 0 0 0 2px rgba(64, 188, 244, .22);
+            outline: 0;
+        }
+        #${WIDGET_ID}[aria-expanded="true"] { margin-bottom: 8px; }
+
         #${WIDGET_ID} .jellyboxd-message {
             align-items: center;
             display: inline-flex;
@@ -87,6 +106,24 @@
         }
 
         #${WIDGET_ID}[data-state="loading"] .jellyboxd-message::before { display: none; }
+
+        #${WIDGET_ID} .jellyboxd-chevron {
+            border: solid currentColor;
+            border-width: 0 1.5px 1.5px 0;
+            display: none;
+            height: 5px;
+            margin: -3px 1px 0 2px;
+            transform: rotate(45deg);
+            transition: transform .15s ease, margin .15s ease;
+            width: 5px;
+        }
+
+        #${WIDGET_ID}[data-interactive="true"] .jellyboxd-chevron { display: inline-block; }
+        #${WIDGET_ID}[aria-expanded="true"] .jellyboxd-chevron {
+            margin-bottom: -3px;
+            margin-top: 0;
+            transform: rotate(225deg);
+        }
 
         #${WIDGET_ID} .jellyboxd-spinner {
             animation: jellyboxd-spin .8s linear infinite;
@@ -111,6 +148,97 @@
             padding: 3px 4px;
             text-decoration: underline;
             text-underline-offset: 2px;
+        }
+
+        #${DETAILS_ID} {
+            background: linear-gradient(180deg, #202a32 0%, #1b232a 100%);
+            border: 1px solid #34434e;
+            border-radius: 8px;
+            box-shadow: 0 10px 28px rgba(0, 0, 0, .3);
+            box-sizing: border-box;
+            color: #9fb3c1;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-size: 12px;
+            margin: 0 0 15px;
+            max-width: 470px;
+            overflow: hidden;
+            width: 100%;
+        }
+
+        #${DETAILS_ID} .jellyboxd-details-header {
+            border-bottom: 1px solid #34434e;
+            color: #b9cbd7;
+            font-size: 13px;
+            font-weight: 500;
+            padding: 11px 13px;
+        }
+
+        #${DETAILS_ID} .jellyboxd-item-heading {
+            background: rgba(255, 255, 255, .025);
+            color: #8fa5b4;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: .35px;
+            padding: 8px 13px;
+            text-transform: uppercase;
+        }
+
+        #${DETAILS_ID} .jellyboxd-item-group + .jellyboxd-item-group,
+        #${DETAILS_ID} .jellyboxd-version + .jellyboxd-version {
+            border-top: 1px solid #34434e;
+        }
+
+        #${DETAILS_ID} .jellyboxd-version { padding: 10px 13px; }
+        #${DETAILS_ID} .jellyboxd-version-title {
+            color: #d5e0e7;
+            font-size: 14px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+        #${DETAILS_ID} .jellyboxd-version-primary { color: #a9bdca; }
+        #${DETAILS_ID} .jellyboxd-version-secondary { color: #8096a5; margin-top: 3px; }
+        #${DETAILS_ID} .jellyboxd-version-primary,
+        #${DETAILS_ID} .jellyboxd-version-secondary { line-height: 1.4; }
+
+        #${DETAILS_ID} .jellyboxd-details-link {
+            border-top: 1px solid #34434e;
+            color: #40bcf4;
+            display: block;
+            font-size: 12px;
+            padding: 9px 13px;
+            text-decoration: none;
+        }
+        #${DETAILS_ID} .jellyboxd-details-link:hover { color: #78d3fa; }
+
+        #${DETAILS_ID} .jellyboxd-details-status {
+            align-items: center;
+            display: flex;
+            gap: 8px;
+            min-height: 42px;
+            padding: 0 13px;
+        }
+        #${DETAILS_ID} .jellyboxd-details-status[data-loading="true"]::before {
+            animation: jellyboxd-spin .8s linear infinite;
+            border: 2px solid rgba(183, 201, 216, .3);
+            border-radius: 50%;
+            border-top-color: #40bcf4;
+            box-sizing: border-box;
+            content: "";
+            height: 12px;
+            width: 12px;
+        }
+        #${DETAILS_ID} .jellyboxd-details-status button {
+            background: transparent;
+            border: 0;
+            color: #40bcf4;
+            cursor: pointer;
+            font: inherit;
+            margin-left: auto;
+            padding: 4px 0;
+        }
+
+        @media (max-width: 600px) {
+            #${DETAILS_ID} { max-width: 100%; }
         }
 
         #${SETTINGS_ID} {
@@ -241,16 +369,16 @@
             .toLocaleLowerCase();
     }
 
-    function findMatchingMovieByTitle(items, metadata) {
+    function findMatchingMoviesByTitle(items, metadata) {
         const expectedTitle = normalizeTitle(metadata.title);
 
-        return items.find((item) => {
+        return items.filter((item) => {
             if (!item?.Name || normalizeTitle(item.Name) !== expectedTitle) return false;
 
             const productionYear = Number(item.ProductionYear);
             if (!metadata.year || !Number.isFinite(productionYear)) return true;
             return productionYear === metadata.year;
-        }) || null;
+        });
     }
 
     function getProviderId(item, providerName) {
@@ -259,8 +387,8 @@
         return providerEntry ? String(providerEntry[1]) : null;
     }
 
-    function findMatchingMovieByTmdbId(items, tmdbId) {
-        return items.find((item) => getProviderId(item, 'tmdb') === String(tmdbId)) || null;
+    function findMatchingMoviesByTmdbId(items, tmdbId) {
+        return items.filter((item) => getProviderId(item, 'tmdb') === String(tmdbId));
     }
 
     function getWidgetPlacement() {
@@ -273,9 +401,27 @@
         return null;
     }
 
+    function bindWidgetEvents(widget) {
+        if (boundWidgets.has(widget)) return;
+        boundWidgets.add(widget);
+
+        widget.addEventListener('click', (event) => {
+            if (widget.dataset.interactive !== 'true' || event.target.closest('button, a')) return;
+            void toggleMovieDetails();
+        });
+        widget.addEventListener('keydown', (event) => {
+            if (widget.dataset.interactive !== 'true' || !['Enter', ' '].includes(event.key)) return;
+            event.preventDefault();
+            void toggleMovieDetails();
+        });
+    }
+
     function ensureWidget() {
         const existing = document.getElementById(WIDGET_ID);
-        if (existing) return existing;
+        if (existing) {
+            bindWidgetEvents(existing);
+            return existing;
+        }
 
         const placement = getWidgetPlacement();
         if (!placement) return null;
@@ -292,9 +438,36 @@
         const message = document.createElement('span');
         message.className = 'jellyboxd-message';
 
-        widget.append(spinner, message);
+        const chevron = document.createElement('span');
+        chevron.className = 'jellyboxd-chevron';
+        chevron.setAttribute('aria-hidden', 'true');
+
+        widget.append(spinner, message, chevron);
+        bindWidgetEvents(widget);
         placement.parent.insertBefore(widget, placement.before);
         return widget;
+    }
+
+    function setWidgetInteractivity(widget, interactive) {
+        if (interactive) {
+            widget.dataset.interactive = 'true';
+            widget.tabIndex = 0;
+            widget.setAttribute('role', 'button');
+            widget.setAttribute('aria-controls', DETAILS_ID);
+            widget.setAttribute('aria-expanded', String(detailsOpen));
+            widget.setAttribute('aria-label', `${currentView.message}. Show media details.`);
+            widget.removeAttribute('aria-live');
+            return;
+        }
+
+        delete widget.dataset.interactive;
+        widget.removeAttribute('tabindex');
+        widget.removeAttribute('aria-controls');
+        widget.removeAttribute('aria-expanded');
+        widget.removeAttribute('aria-label');
+        widget.setAttribute('role', 'status');
+        widget.setAttribute('aria-live', 'polite');
+        closeMovieDetails();
     }
 
     function renderWidgetState(view) {
@@ -304,6 +477,7 @@
         widget.dataset.state = view.state;
         widget.querySelector('.jellyboxd-message').textContent = view.message;
         widget.querySelector('button')?.remove();
+        setWidgetInteractivity(widget, view.state === 'available' && matchingMovies.length > 0);
 
         if (view.action) {
             const button = document.createElement('button');
@@ -312,12 +486,347 @@
             button.addEventListener('click', view.action.onClick);
             widget.append(button);
         }
+
+        if (view.state === 'available' && detailsOpen) {
+            if (detailsData) renderMovieDetails(detailsData, readConfiguration());
+            else if (detailsLoading) renderDetailsStatus('Loading media details…', { loading: true });
+        }
     }
 
     function setWidgetState(state, message, action = null) {
         lastState = state;
         currentView = { state, message, action };
         renderWidgetState(currentView);
+    }
+
+    function closeMovieDetails() {
+        detailsOpen = false;
+        document.getElementById(DETAILS_ID)?.remove();
+        const widget = document.getElementById(WIDGET_ID);
+        if (widget?.dataset.interactive === 'true') {
+            widget.setAttribute('aria-expanded', 'false');
+            widget.setAttribute('aria-label', `${currentView.message}. Show media details.`);
+        }
+    }
+
+    function resetMovieDetails() {
+        matchingMovies = [];
+        detailsData = null;
+        detailsLoading = false;
+        closeMovieDetails();
+    }
+
+    function ensureDetailsPanel() {
+        const widget = ensureWidget();
+        if (!widget) return null;
+
+        let panel = document.getElementById(DETAILS_ID);
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.id = DETAILS_ID;
+            panel.setAttribute('role', 'region');
+            panel.setAttribute('aria-live', 'polite');
+            panel.setAttribute('aria-label', 'Jellyfin media details');
+        }
+
+        if (panel.previousElementSibling !== widget) widget.insertAdjacentElement('afterend', panel);
+        return panel;
+    }
+
+    function renderDetailsStatus(message, options = {}) {
+        const panel = ensureDetailsPanel();
+        if (!panel) return;
+
+        const status = document.createElement('div');
+        status.className = 'jellyboxd-details-status';
+        status.textContent = message;
+        if (options.loading) status.dataset.loading = 'true';
+
+        if (options.retry) {
+            const retryButton = document.createElement('button');
+            retryButton.type = 'button';
+            retryButton.textContent = 'Retry';
+            retryButton.addEventListener('click', () => {
+                detailsData = null;
+                void loadMovieDetails();
+            });
+            status.append(retryButton);
+        }
+
+        panel.replaceChildren(status);
+    }
+
+    function getStreams(item, source) {
+        if (Array.isArray(source?.MediaStreams) && source.MediaStreams.length > 0) {
+            return source.MediaStreams;
+        }
+        return Array.isArray(item?.MediaStreams) ? item.MediaStreams : [];
+    }
+
+    function getStream(item, source, type) {
+        return getStreams(item, source)
+            .find((stream) => String(stream?.Type || '').toLocaleLowerCase() === type) || null;
+    }
+
+    function formatCodec(value) {
+        const codec = String(value || '').trim();
+        if (!codec) return null;
+
+        const normalized = codec.toLocaleLowerCase().replace(/[^a-z0-9]/g, '');
+        const labels = {
+            ac3: 'AC-3',
+            aac: 'AAC',
+            av1: 'AV1',
+            avc: 'H.264',
+            dts: 'DTS',
+            dtshd: 'DTS-HD',
+            eac3: 'E-AC-3',
+            flac: 'FLAC',
+            h264: 'H.264',
+            h265: 'HEVC',
+            hevc: 'HEVC',
+            truehd: 'TrueHD',
+            vp9: 'VP9'
+        };
+        return labels[normalized] || codec.toLocaleUpperCase();
+    }
+
+    function formatResolution(videoStream) {
+        const height = Number(videoStream?.Height);
+        if (!Number.isFinite(height) || height <= 0) return null;
+        if (height >= 2160) return '2160p';
+        if (height >= 1440) return '1440p';
+        if (height >= 1080) return '1080p';
+        if (height >= 720) return '720p';
+        return `${Math.round(height)}p`;
+    }
+
+    function formatVideoRange(videoStream) {
+        const sourceValue = String(videoStream?.VideoRangeType || videoStream?.VideoRange || '')
+            .toLocaleUpperCase();
+        if (sourceValue.includes('DOVI')) return 'Dolby Vision';
+        if (sourceValue.includes('HDR10')) return 'HDR10';
+        if (sourceValue.includes('HLG')) return 'HLG';
+        if (sourceValue.includes('HDR')) return 'HDR';
+        if (sourceValue.includes('SDR')) return 'SDR';
+
+        const transfer = String(videoStream?.ColorTransfer || '').toLocaleLowerCase();
+        if (transfer.includes('smpte2084')) return 'HDR10';
+        if (transfer.includes('arib-std-b67')) return 'HLG';
+        return null;
+    }
+
+    function formatBitrate(value) {
+        const bitrate = Number(value);
+        if (!Number.isFinite(bitrate) || bitrate <= 0) return null;
+        return `${(bitrate / 1_000_000).toFixed(bitrate >= 10_000_000 ? 1 : 2)} Mbps`;
+    }
+
+    function formatSize(value) {
+        const size = Number(value);
+        if (!Number.isFinite(size) || size <= 0) return null;
+        const gigabytes = size / 1_000_000_000;
+        if (gigabytes >= 1) return `${gigabytes.toFixed(gigabytes >= 10 ? 1 : 2)} GB`;
+        return `${(size / 1_000_000).toFixed(0)} MB`;
+    }
+
+    function formatChannels(audioStream) {
+        const channels = Number(audioStream?.Channels);
+        if (!Number.isFinite(channels) || channels <= 0) return null;
+        if (channels === 8) return '7.1';
+        if (channels === 6) return '5.1';
+        if (channels === 2) return '2.0';
+        if (channels === 1) return 'Mono';
+        return `${channels} ch`;
+    }
+
+    function formatAudio(audioStream) {
+        if (!audioStream) return null;
+        const codec = formatCodec(audioStream.Profile || audioStream.Codec);
+        const channels = formatChannels(audioStream);
+        return [codec, channels].filter(Boolean).join(' ') || null;
+    }
+
+    function getMediaSources(item) {
+        if (Array.isArray(item?.MediaSources) && item.MediaSources.length > 0) {
+            return item.MediaSources.filter(Boolean);
+        }
+
+        if (Array.isArray(item?.MediaStreams) && item.MediaStreams.length > 0) {
+            return [{
+                Bitrate: item.Bitrate,
+                Container: item.Container,
+                MediaStreams: item.MediaStreams,
+                Name: item.Name,
+                Size: item.Size
+            }];
+        }
+
+        return [{}];
+    }
+
+    function getVersionTitle(item, source, videoStream, index) {
+        const sourceName = String(source?.Name || '').trim();
+        if (sourceName && normalizeTitle(sourceName) !== normalizeTitle(item?.Name || '')) {
+            return sourceName;
+        }
+
+        const resolution = formatResolution(videoStream);
+        const videoRange = formatVideoRange(videoStream);
+        const resolutionLabel = resolution === '2160p' ? '4K'
+            : resolution === '1440p' ? 'QHD'
+                : resolution === '1080p' ? 'Full HD'
+                    : resolution;
+        return [resolutionLabel, videoRange && videoRange !== 'SDR' ? videoRange : null]
+            .filter(Boolean)
+            .join(' ') || `Version ${index + 1}`;
+    }
+
+    function buildJellyfinItemUrl(serverUrl, itemId) {
+        return `${serverUrl}/web/#/details?id=${encodeURIComponent(itemId)}`;
+    }
+
+    function appendVersion(panelGroup, item, source, index) {
+        const videoStream = getStream(item, source, 'video');
+        const audioStream = getStream(item, source, 'audio');
+        const primaryParts = [
+            formatResolution(videoStream),
+            formatCodec(videoStream?.Codec),
+            formatVideoRange(videoStream),
+            formatCodec(source?.Container || item?.Container)
+        ].filter(Boolean);
+        const secondaryParts = [
+            formatBitrate(source?.Bitrate || item?.Bitrate || videoStream?.BitRate),
+            formatSize(source?.Size || item?.Size),
+            formatAudio(audioStream)
+        ].filter(Boolean);
+
+        const version = document.createElement('div');
+        version.className = 'jellyboxd-version';
+
+        const title = document.createElement('div');
+        title.className = 'jellyboxd-version-title';
+        title.textContent = getVersionTitle(item, source, videoStream, index);
+
+        const primary = document.createElement('div');
+        primary.className = 'jellyboxd-version-primary';
+        primary.textContent = primaryParts.join('  •  ') || 'Media details unavailable';
+
+        version.append(title, primary);
+        if (secondaryParts.length > 0) {
+            const secondary = document.createElement('div');
+            secondary.className = 'jellyboxd-version-secondary';
+            secondary.textContent = secondaryParts.join('  •  ');
+            version.append(secondary);
+        }
+        panelGroup.append(version);
+    }
+
+    function renderMovieDetails(items, configuration) {
+        const panel = ensureDetailsPanel();
+        if (!panel) return;
+
+        const groups = items.map((item) => ({ item, sources: getMediaSources(item) }));
+        const versionCount = groups.reduce((total, group) => total + group.sources.length, 0);
+        if (versionCount === 0) {
+            renderDetailsStatus('No media details were returned by Jellyfin.');
+            return;
+        }
+
+        const header = document.createElement('div');
+        header.className = 'jellyboxd-details-header';
+        header.textContent = `${versionCount} ${versionCount === 1 ? 'version' : 'versions'} on Jellyfin`;
+        panel.replaceChildren(header);
+
+        groups.forEach(({ item, sources }) => {
+            const group = document.createElement('div');
+            group.className = 'jellyboxd-item-group';
+
+            if (groups.length > 1) {
+                const heading = document.createElement('div');
+                heading.className = 'jellyboxd-item-heading';
+                const year = Number(item?.ProductionYear);
+                heading.textContent = `${item?.Name || 'Movie'}${Number.isFinite(year) ? ` (${year})` : ''}`;
+                group.append(heading);
+            }
+
+            sources.forEach((source, index) => appendVersion(group, item, source, index));
+
+            if (item?.Id) {
+                const link = document.createElement('a');
+                link.className = 'jellyboxd-details-link';
+                link.href = buildJellyfinItemUrl(configuration.serverUrl, item.Id);
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.textContent = 'Open in Jellyfin ↗';
+                group.append(link);
+            }
+            panel.append(group);
+        });
+    }
+
+    function buildDetailsRequestUrl(serverUrl, matches) {
+        const ids = [...new Set(matches.map((item) => item?.Id).filter(Boolean))];
+        if (ids.length === 0) {
+            throw new JellyfinRequestError('Jellyfin did not return item identifiers.');
+        }
+
+        const query = new URLSearchParams({
+            ids: ids.join(','),
+            recursive: 'true',
+            fields: 'MediaSources,MediaStreams,ProductionYear,ProviderIds',
+            enableImages: 'false',
+            enableUserData: 'false',
+            enableTotalRecordCount: 'false'
+        });
+        return `${serverUrl}/Items?${query}`;
+    }
+
+    async function loadMovieDetails() {
+        if (!detailsOpen) return;
+        if (detailsLoading) {
+            renderDetailsStatus('Loading media details…', { loading: true });
+            return;
+        }
+        detailsLoading = true;
+        renderDetailsStatus('Loading media details…', { loading: true });
+
+        const configuration = readConfiguration();
+        const generation = requestGeneration;
+        try {
+            const response = await requestJson(
+                buildDetailsRequestUrl(configuration.serverUrl, matchingMovies),
+                configuration.apiKey
+            );
+            if (generation !== requestGeneration) return;
+            detailsData = getItemsFromResponse(response);
+            if (detailsOpen) renderMovieDetails(detailsData, configuration);
+        } catch (error) {
+            if (generation !== requestGeneration) return;
+            console.error(`${SCRIPT_NAME}:`, error);
+            if (detailsOpen) renderDetailsStatus('Could not load media details.', { retry: true });
+        } finally {
+            detailsLoading = false;
+        }
+    }
+
+    async function toggleMovieDetails() {
+        if (detailsOpen) {
+            closeMovieDetails();
+            return;
+        }
+
+        if (matchingMovies.length === 0) return;
+        detailsOpen = true;
+        const widget = document.getElementById(WIDGET_ID);
+        widget?.setAttribute('aria-expanded', 'true');
+        widget?.setAttribute('aria-label', `${currentView.message}. Hide media details.`);
+
+        if (detailsData) {
+            renderMovieDetails(detailsData, readConfiguration());
+            return;
+        }
+        await loadMovieDetails();
     }
 
     function buildTitleRequestUrl(serverUrl, metadata) {
@@ -420,21 +929,21 @@
         return data.Items;
     }
 
-    async function findMovie(metadata, configuration, generation) {
+    async function findMovies(metadata, configuration, generation) {
         const tmdbRequestUrl = buildTmdbRequestUrl(configuration.serverUrl, metadata);
         if (tmdbRequestUrl) {
             const tmdbData = await requestJson(tmdbRequestUrl, configuration.apiKey);
-            const tmdbMatch = findMatchingMovieByTmdbId(getItemsFromResponse(tmdbData), metadata.tmdbId);
-            if (tmdbMatch) return tmdbMatch;
-            if (generation !== requestGeneration) return null;
+            const tmdbMatches = findMatchingMoviesByTmdbId(getItemsFromResponse(tmdbData), metadata.tmdbId);
+            if (tmdbMatches.length > 0) return tmdbMatches;
+            if (generation !== requestGeneration) return [];
         }
 
-        if (generation !== requestGeneration) return null;
+        if (generation !== requestGeneration) return [];
         const titleData = await requestJson(
             buildTitleRequestUrl(configuration.serverUrl, metadata),
             configuration.apiKey
         );
-        return findMatchingMovieByTitle(getItemsFromResponse(titleData), metadata);
+        return findMatchingMoviesByTitle(getItemsFromResponse(titleData), metadata);
     }
 
     async function checkAvailability(metadata, configuration, generation, loadingStartedAt) {
@@ -448,11 +957,13 @@
             }
 
             try {
-                const match = await findMovie(metadata, configuration, generation);
+                const matches = await findMovies(metadata, configuration, generation);
                 if (generation !== requestGeneration) return;
                 if (!await finishMinimumLoading(loadingStartedAt, generation)) return;
 
-                if (match) {
+                matchingMovies = matches;
+                detailsData = null;
+                if (matches.length > 0) {
                     setWidgetState('available', 'Available on Jellyfin');
                 } else {
                     setWidgetState('unavailable', 'Not available on Jellyfin');
@@ -497,6 +1008,7 @@
         }
 
         cancelActiveRequest();
+        resetMovieDetails();
         activePageKey = pageKey;
 
         const configuration = readConfiguration();

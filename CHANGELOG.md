@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## 2.2.0 - 2026-09-10
+
+- made the available status chip expandable and keyboard accessible;
+- added on-demand media details for resolution, codecs, HDR format, container, bitrate, file size, and audio channels;
+- added support for displaying multiple matching Jellyfin items and multiple media versions;
+- added direct links from the details panel to the matching Jellyfin items.
+
 ## 2.1.0 - 2026-09-09
 
 - redesigned the availability widget as a compact, Letterboxd-native charcoal chip;

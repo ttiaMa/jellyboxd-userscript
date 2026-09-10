@@ -8,6 +8,7 @@ A userscript that shows whether a movie on Letterboxd is available in your Jelly
 
 - exact TMDB ID matching, with title and year matching as a fallback;
 - Jellyfin 12 compatible authentication;
+- expandable media details with support for multiple versions;
 - automatic retries for temporary connection failures.
 
 ## Installation
