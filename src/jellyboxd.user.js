@@ -188,12 +188,20 @@
             border-top: 1px solid #34434e;
         }
 
-        #${DETAILS_ID} .jellyboxd-version { padding: 10px 13px; }
+        #${DETAILS_ID} .jellyboxd-version {
+            min-width: 0;
+            padding: 10px 13px;
+        }
         #${DETAILS_ID} .jellyboxd-version-title {
             color: #d5e0e7;
             font-size: 14px;
             font-weight: 700;
+            line-height: 1.25;
             margin-bottom: 4px;
+            max-width: 100%;
+            overflow-wrap: anywhere;
+            white-space: normal;
+            word-break: break-word;
         }
         #${DETAILS_ID} .jellyboxd-version-primary { color: #a9bdca; }
         #${DETAILS_ID} .jellyboxd-version-secondary { color: #8096a5; margin-top: 3px; }
