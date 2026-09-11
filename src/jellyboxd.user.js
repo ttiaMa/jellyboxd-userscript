@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Jellyboxd
 // @namespace    https://github.com/ttiaMa/jellyboxd-userscript
-// @version      2.2.0
+// @version      2.2.1
 // @description  Shows whether a Letterboxd movie is available in your Jellyfin library.
 // @author       Mattia
 // @icon         https://raw.githubusercontent.com/jellyfin/jellyfin-ux/master/branding/web/icon-transparent.png

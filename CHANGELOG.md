@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented in this file.
 
+## 2.2.1 - 2026-09-11
+
+- fixed long media version names overflowing the details panel while preserving the full text.
+
 ## 2.2.0 - 2026-09-10
 
 - made the available status chip expandable and keyboard accessible;
